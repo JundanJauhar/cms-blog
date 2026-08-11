@@ -27,6 +27,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Logout
     Route::post('/logout', [AuthController::class, 'logout']);
 
+    // Likes (Toggle Like/Unlike)
+    Route::post('/posts/{post}/like', [PostController::class, 'toggleLike']);
+
     // User Profile Check
     Route::get('/user', function (Request $request) {
         return $request->user();

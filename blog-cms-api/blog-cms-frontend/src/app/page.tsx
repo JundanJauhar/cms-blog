@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
-import { Search, BookOpen, Clock, Calendar, ArrowRight, LayoutDashboard } from 'lucide-react';
+import { Search, BookOpen, Clock, Calendar, ArrowRight, LayoutDashboard, Heart } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+
 
 interface Category {
   id: number;
@@ -19,6 +21,8 @@ interface Post {
   excerpt: string;
   content: string;
   status: string;
+  likes_count: number; // Add likes count property
+  liked_by_current_user: boolean;
   created_at: string;
   category?: {
     id: number;
@@ -37,12 +41,20 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [post, setPost] = useState<Post | null>(null);
+  const router = useRouter();
+  const [liked, setLiked] = useState(false);
+
+
+
 
   useEffect(() => {
     // Check login status
     if (typeof window !== 'undefined') {
       setIsLoggedIn(!!localStorage.getItem('blog_cms_token'));
     }
+
+   
 
     // Fetch data
     const fetchData = async () => {
@@ -64,6 +76,34 @@ export default function Home() {
 
     fetchData();
   }, []);
+
+  const handleLike = async (postId: number) => {
+    // Cek apakah user sudah login dengan mengecek keberadaan token
+    const token = localStorage.getItem('blog_cms_token');
+    if (!token) {
+      alert('Anda harus login terlebih dahulu untuk menyukai artikel.');
+      router.push('/admin/login');
+      return;
+    }
+
+    try {
+      const res = await api.post(`/posts/${postId}/like`);
+
+      // Perbarui status like dan total likes untuk artikel tertentu di list posts
+      setPosts(posts.map(p => {
+        if (p.id === postId) {
+          return {
+            ...p,
+            liked_by_current_user: res.data.liked,
+            likes_count: res.data.likes_count
+          };
+        }
+        return p;
+      }));
+    } catch (err) {
+      console.error('Gagal memproses like:', err);
+    }
+  };
 
   // Fetch posts filtered by category or search
   useEffect(() => {
@@ -170,11 +210,10 @@ export default function Home() {
         <div className="flex flex-wrap items-center gap-2 mb-10 pb-4 border-b border-zinc-900">
           <button
             onClick={() => setSelectedCategory(null)}
-            className={`px-4 py-2 text-sm font-semibold rounded-full border transition-all duration-200 ${
-              selectedCategory === null
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20'
-                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
-            }`}
+            className={`px-4 py-2 text-sm font-semibold rounded-full border transition-all duration-200 ${selectedCategory === null
+              ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20'
+              : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+              }`}
           >
             Semua
           </button>
@@ -182,11 +221,10 @@ export default function Home() {
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
-              className={`px-4 py-2 text-sm font-semibold rounded-full border transition-all duration-200 ${
-                selectedCategory === cat.id
-                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20'
-                  : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
-              }`}
+              className={`px-4 py-2 text-sm font-semibold rounded-full border transition-all duration-200 ${selectedCategory === cat.id
+                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                }`}
             >
               {cat.name}
             </button>
@@ -231,6 +269,21 @@ export default function Home() {
                     <span className="text-zinc-650 text-xs flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" /> 3 mnt baca
                     </span>
+                  </div>
+
+                  {/* likes count */}
+                  <div className="flex items-center gap-1.5 mb-4">
+                    <button
+                      onClick={() => handleLike(post.id)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-all duration-200 cursor-pointer ${post.liked_by_current_user
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                        : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                        }`}
+                    >
+                      <Heart className={`w-4 h-4 ${post.liked_by_current_user ? 'fill-rose-400 text-rose-400' : 'text-zinc-500'}`} />
+                      {/* Tampilkan jumlah likes secara dinamis dari database */}
+                      <span>{post.likes_count} Likes</span>
+                    </button>
                   </div>
 
                   {/* Title */}

@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { ArrowLeft, Calendar, User, Clock, Tag } from 'lucide-react';
+import { ArrowLeft, Calendar, User, Clock, Tag, Heart } from 'lucide-react';
+
+
 
 interface Post {
   id: number;
@@ -13,6 +15,8 @@ interface Post {
   excerpt: string;
   content: string;
   status: string;
+  likes_count: number; // Add likes count property
+  liked_by_current_user: boolean; // <-- Apakah user ini sudah me-like
   created_at: string;
   category?: {
     name: string;
@@ -27,6 +31,8 @@ export default function PostDetail() {
   const params = useParams();
   const router = useRouter();
   const slug = params.slug as string;
+  const [liked, setLiked] = useState(false);
+
 
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +46,7 @@ export default function PostDetail() {
         setLoading(true);
         const res = await api.get(`/posts/${slug}`);
         setPost(res.data);
+        setLiked(res.data.liked_by_current_user);
       } catch (err: any) {
         console.error('Error fetching post:', err);
         if (err.response && err.response.status === 404) {
@@ -54,6 +61,33 @@ export default function PostDetail() {
 
     fetchPost();
   }, [slug]);
+
+  const handleLike = async () => {
+    if (!post) return;
+
+    // Cek apakah user sudah login dengan mengecek keberadaan token
+    const token = localStorage.getItem('blog_cms_token');
+    if (!token) {
+      alert('Anda harus login terlebih dahulu untuk menyukai artikel.');
+      router.push('/admin/login');
+      return;
+    }
+
+    try {
+      const res = await api.post(`/posts/${post.id}/like`);
+
+      // Perbarui state post lokal dengan data liked & total likes terbaru dari server
+      setPost({
+        ...post,
+        liked_by_current_user: res.data.liked,
+        likes_count: res.data.likes_count
+      });
+
+      setLiked(res.data.liked);
+    } catch (err) {
+      console.error('Gagal memproses like:', err);
+    }
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('id-ID', {
@@ -137,6 +171,28 @@ export default function PostDetail() {
             <div className="flex items-center gap-1.5">
               <Clock className="w-4 h-4 text-zinc-500" />
               <span>3 menit baca</span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Tag className="w-4 h-4 text-zinc-500" />
+              <span>{post.category?.name || 'Uncategorized'}</span>
+            </div>
+
+            <div
+              className="flex items-center gap-1.5 cursor-pointer"
+            >
+              {/* Tombol Like */}
+              <button
+                onClick={handleLike}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-all duration-200 cursor-pointer ${liked
+                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                  }`}
+              >
+                <Heart className={`w-4 h-4 ${liked ? 'fill-rose-400 text-rose-400' : 'text-zinc-500'}`} />
+                {/* Tampilkan jumlah likes secara dinamis dari database */}
+                <span>{post.likes_count} Likes</span>
+              </button>
             </div>
           </div>
         </header>

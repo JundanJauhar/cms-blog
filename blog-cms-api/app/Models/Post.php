@@ -12,6 +12,7 @@ class Post extends Model
         'content',
         'excerpt',
         'status',
+        'likes',
         'user_id',
         'category_id',
     ];
@@ -24,5 +25,10 @@ class Post extends Model
     public function category()
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function likedByUsers()
+    {
+        return $this->belongsToMany(User::class, 'post_user_likes')->withTimestamps();
     }
 }

@@ -17,7 +17,7 @@ class PostController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Post::with(['user', 'category']);
+        $query = Post::with(['user', 'category'])->withCount('likedByUsers');
 
         // Check if loading for Dashboard
         if ($request->query('dashboard') == 1) {
@@ -48,12 +48,21 @@ class PostController extends Controller
                 $search = $request->query('search');
                 $query->where(function ($q) use ($search) {
                     $q->where('title', 'like', "%{$search}%")
-                      ->orWhere('content', 'like', "%{$search}%");
+                        ->orWhere('content', 'like', "%{$search}%");
                 });
             }
         }
 
+        $currentUser = $request->user('sanctum');
         $posts = $query->orderBy('created_at', 'desc')->get();
+
+        $posts->each(function ($post) use ($currentUser) {
+            $post->likes_count = $post->liked_by_users_count;
+            $post->liked_by_current_user = $currentUser 
+                ? $post->likedByUsers()->where('user_id', $currentUser->id)->exists() 
+                : false;
+        });
+
         return response()->json($posts);
     }
 
@@ -102,13 +111,24 @@ class PostController extends Controller
     {
         $post = Post::with(['user', 'category'])->where('slug', $slug)->firstOrFail();
 
-        // If the post is draft, only allow the owner or admin to view it
+        // Cek draft permission
         if ($post->status !== 'published') {
             $user = request()->user('sanctum');
             if (!$user || ($user->role !== 'admin' && $user->id !== $post->user_id)) {
-                return response()->json(['message' => 'Postingan tidak ditemukan atau belum dipublikasikan.'], 404);
+                return response()->json(['message' => 'Postingan tidak ditemukan.'], 404);
             }
         }
+
+        // Cek apakah user yang login saat ini sudah me-like artikel ini
+        $currentUser = request()->user('sanctum');
+        $likedByCurrentUser = false;
+        if ($currentUser) {
+            $likedByCurrentUser = $post->likedByUsers()->where('user_id', $currentUser->id)->exists();
+        }
+
+        // Sisipkan atribut tambahan ke dalam objek post
+        $post->likes_count = $post->likedByUsers()->count();
+        $post->liked_by_current_user = $likedByCurrentUser;
 
         return response()->json($post);
     }
@@ -166,6 +186,39 @@ class PostController extends Controller
 
         return response()->json([
             'message' => 'Postingan berhasil dihapus.'
+        ]);
+    }
+
+
+    /**
+     * Menyukai atau batal menyukai postingan (Toggle Like/Unlike).
+     */
+    public function toggleLike(Request $request, Post $post)
+    {
+        $user = $request->user();
+
+        // Cek apakah user sudah menyukai postingan ini sebelumnya
+        $hasLiked = $post->likedByUsers()->where('user_id', $user->id)->exists();
+
+        if ($hasLiked) {
+            // Batal menyukai (Unlike) -> hapus baris di tabel pivot
+            $post->likedByUsers()->detach($user->id);
+            $liked = false;
+            $message = 'Batal menyukai postingan.';
+        } else {
+            // Menyukai (Like) -> tambahkan baris di tabel pivot
+            $post->likedByUsers()->attach($user->id);
+            $liked = true;
+            $message = 'Postingan disukai.';
+        }
+
+        // Ambil total like terbaru
+        $likesCount = $post->likedByUsers()->count();
+
+        return response()->json([
+            'message' => $message,
+            'liked' => $liked,
+            'likes_count' => $likesCount
         ]);
     }
 }
